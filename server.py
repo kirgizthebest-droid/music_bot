@@ -197,3 +197,61 @@ app.add_handler(CallbackQueryHandler(buy))
 app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT,successful_payment))
 
 app.run_polling()
+if query.data.startswith("stars_"):
+
+    package = query.data.replace("stars_","")
+
+    prices = create_invoice(package)
+
+    await context.bot.send_invoice(
+
+        chat_id=query.message.chat_id,
+
+        title="Пакет песен",
+
+        description=package,
+
+        payload=package,
+
+        provider_token="",
+
+        currency="XTR",
+
+        prices=prices
+
+
+    if query.data.startswith("card_"):
+
+    package = query.data.replace("card_","")
+
+    price = PACKAGES[package]["price_rub"]
+
+    payment_url = f"https://yoomoney.ru/quickpay/confirm.xml?receiver=4100119491011245={price}"
+
+    await query.message.reply_text(
+
+        f"Оплатите по ссылке:\n{payment_url}\n\nПосле оплаты нажмите /paid"
+
+    
+    if query.data.startswith("crypto_"):
+
+    package = query.data.replace("crypto_","")
+
+    price = PACKAGES[package]["price_usdt"]
+
+    wallet = "ВАШ_USDT_КОШЕЛЕК"
+
+    await query.message.reply_text(
+
+f"""
+Оплатите {price} USDT
+
+Сеть: TRC20
+
+Кошелек:
+
+{wallet}
+
+После оплаты отправьте TXID
+"""
+)
