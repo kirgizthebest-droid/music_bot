@@ -1,0 +1,82 @@
+from flask import Flask, request, jsonify
+import requests
+import os
+from datetime import datetime
+
+app = Flask(__name__)
+
+# ===== Настройки =====
+TELEGRAM_TOKEN = os.environ.get("8069144735:AAEm_36bw0UctO7d88L_3XWjKIgiIGg_kLY")  # токен Telegram-бота
+SUNO_API_URL = "https://api.sunoapi.org/api/v1/generate"  # endpoint Suno API
+SUNO_API_KEY = os.environ.get("f96d8f07d628dd81a0333877fd7881f0")  # ключ Suno API
+FREE_LIMIT = 1  # 1 бесплатная генерация в день
+
+# ===== Словарь для учёта бесплатных генераций =====
+user_usage = {}  # {chat_id: last_date}
+
+# ===== Проверка лимита =====
+def check_free_limit(chat_id):
+    today = datetime.now().date()
+    last_used = user_usage.get(chat_id)
+    if last_used == today:
+        return False
+    user_usage[chat_id] = today
+    return True
+
+# ===== Маршрут для генерации песни =====
+@app.route("/generate_telegram", methods=["POST"])
+def generate_telegram():
+    data = request.json
+    chat_id = data.get("chat_id")
+    prompt = data.get("prompt")
+
+    if not chat_id or not prompt:
+        return jsonify({"status": "error", "message": "Нужны chat_id и prompt"}), 400
+
+    # ===== Проверка бесплатной генерации =====
+    if not check_free_limit(chat_id):
+        return jsonify({"status": "error", "message": "Вы уже сделали бесплатную песню сегодня"}), 403
+
+    # ===== Отправка запроса в Suno =====
+    try:
+        response = requests.post(
+            SUNO_API_URL,
+            headers={
+                "Authorization": f"Bearer {SUNO_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "prompt": prompt,
+                "customMode": False,
+                "instrumental": False,
+                "model": "V5"
+            },
+            timeout=60
+        )
+        response.raise_for_status()
+        audio_url = response.json().get("audio_url")
+        if not audio_url:
+            return jsonify({"status": "error", "message": "Suno не вернул аудио"}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Suno ошибка: {str(e)}"}), 500
+
+    # ===== Скачиваем mp3 =====
+    audio_file = requests.get(audio_url)
+    filename = f"song_{chat_id}.mp3"
+    with open(filename, "wb") as f:
+        f.write(audio_file.content)
+
+    # ===== Отправка mp3 через Telegram =====
+    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendAudio"
+    with open(filename, "rb") as f:
+        requests.post(telegram_url, data={"chat_id": chat_id}, files={"audio": f})
+
+    # ===== Удаляем mp3 после отправки =====
+    os.remove(filename)
+
+    return jsonify({"status": "ok"})
+
+# ===== Запуск сервера =====
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
