@@ -1,91 +1,204 @@
-from flask import Flask, request, jsonify
-import requests
 import os
-from datetime import datetime
+import requests
 
-app = Flask(__name__)
+from telegram import (
+Update,
+ReplyKeyboardMarkup,
+InlineKeyboardButton,
+InlineKeyboardMarkup
+)
 
-# ====== Настройки через переменные окружения ======
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-SUNO_API_URL = "https://api.sunoapi.org/api/v1/generate"
-SUNO_API_KEY = os.environ.get("SUNO_API_KEY")
+from telegram.ext import (
+ApplicationBuilder,
+CommandHandler,
+MessageHandler,
+CallbackQueryHandler,
+filters,
+ContextTypes
+)
 
-if not TELEGRAM_TOKEN or not SUNO_API_KEY:
-    raise ValueError("Пожалуйста, установите TELEGRAM_TOKEN и SUNO_API_KEY в переменные окружения!")
+from prompts import build_prompt
+from database import *
+from payments import *
 
-# ====== Ограничение бесплатной генерации ======
-FREE_LIMIT = 1
-user_usage = {}  # {chat_id: last_date}
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+SUNO_API_KEY = os.getenv("SUNO_API_KEY")
 
-def check_free_limit(chat_id):
-    today = datetime.now().date()
-    last_used = user_usage.get(chat_id)
-    if last_used == today:
-        return False
-    user_usage[chat_id] = today
-    return True
+SUNO_URL = "https://api.sunoapi.org/api/v1/generate"
 
-# ====== Основной маршрут ======
-@app.route("/generate_telegram", methods=["POST"])
-def generate_telegram():
-    data = request.json
-    chat_id = data.get("chat_id")
-    prompt = data.get("prompt")
+user_data = {}
 
-    if not chat_id or not prompt:
-        return jsonify({"status": "error", "message": "Нужны chat_id и prompt"}), 400
 
-    # ===== Проверка лимита =====
-    if not check_free_limit(chat_id):
-        return jsonify({"status": "error", "message": "Вы уже сделали бесплатную песню сегодня"}), 403
+# START
 
-    # ===== Отправка запроса в Suno =====
-    try:
-        response = requests.post(
-            SUNO_API_URL,
-            headers={
-                "Authorization": f"Bearer {SUNO_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "prompt": prompt,
-                "customMode": False,
-                "instrumental": False,
-                "model": "V5"
-            },
-            timeout=60
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    keyboard = [
+        ["❤️ Для любимого человека"],
+        ["👬 Для друга"],
+        ["💍 Свадьба"],
+        ["🏢 Для компании"]
+    ]
+
+    await update.message.reply_text(
+        "🎵 Я создаю персональные песни!\n\nДля кого песня?",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+
+
+# ОБРАБОТКА СООБЩЕНИЙ
+
+async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user = update.message.from_user.id
+    text = update.message.text
+
+    if user not in user_data:
+        user_data[user] = {}
+
+    data = user_data[user]
+
+    if "target_type" not in data:
+        data["target_type"] = text
+        await update.message.reply_text("Как зовут человека?")
+        return
+
+    if "name" not in data:
+        data["name"] = text
+        await update.message.reply_text("От кого песня?")
+        return
+
+    if "from" not in data:
+        data["from"] = text
+        await update.message.reply_text("Повод?")
+        return
+
+    if "occasion" not in data:
+        data["occasion"] = text
+        await update.message.reply_text("Опишите человека")
+        return
+
+    if "description" not in data:
+        data["description"] = text
+        await update.message.reply_text("Стиль песни? (Поп / Рэп / Рок)")
+        return
+
+    if "style" not in data:
+        data["style"] = text
+        await update.message.reply_text("Настроение песни?")
+        return
+
+    if "mood" not in data:
+
+        data["mood"] = text
+
+        free_used, credits = get_user(user)
+
+        if free_used == 0:
+
+            use_free(user)
+
+        elif credits > 0:
+
+            use_credit(user)
+
+        else:
+
+            keyboard = [
+                [
+                    InlineKeyboardButton("3 песни",callback_data="pack_3")
+                ],
+                [
+                    InlineKeyboardButton("10 песен",callback_data="pack_10")
+                ],
+                [
+                    InlineKeyboardButton("50 песен",callback_data="pack_50")
+                ]
+            ]
+
+            await update.message.reply_text(
+                "Бесплатная песня закончилась.\nКупите пакет:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
+            return
+
+        prompt = build_prompt(data)
+
+        await update.message.reply_text("🎵 Генерирую песню...")
+
+        r = requests.post(
+            SUNO_URL,
+            headers={"Authorization":f"Bearer {SUNO_API_KEY}"},
+            json={"prompt":prompt}
         )
-        response.raise_for_status()
-        audio_url = response.json().get("audio_url")
-        if not audio_url:
-            return jsonify({"status": "error", "message": "Suno не вернул аудио"}), 500
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"Suno ошибка: {str(e)}"}), 500
 
-    # ===== Скачиваем mp3 =====
-    try:
-        audio_file = requests.get(audio_url)
-        filename = f"song_{chat_id}.mp3"
-        with open(filename, "wb") as f:
-            f.write(audio_file.content)
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"Ошибка скачивания mp3: {str(e)}"}), 500
+        audio_url = r.json()["audio_url"]
 
-    # ===== Отправка mp3 через Telegram =====
-    try:
-        telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendAudio"
-        with open(filename, "rb") as f:
-            requests.post(telegram_url, data={"chat_id": chat_id}, files={"audio": f})
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"Ошибка отправки в Telegram: {str(e)}"}), 500
-    finally:
-        # Удаляем файл mp3 после отправки
-        if os.path.exists(filename):
-            os.remove(filename)
+        song = requests.get(audio_url)
 
-    return jsonify({"status": "ok"})
+        file = f"{user}.mp3"
 
-# ===== Запуск сервера ======
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+        with open(file,"wb") as f:
+            f.write(song.content)
+
+        await update.message.reply_audio(open(file,"rb"))
+
+        user_data[user] = {}
+
+
+
+# ПОКУПКА
+
+async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+
+    package = query.data
+
+    prices = create_invoice(package)
+
+    await context.bot.send_invoice(
+
+        chat_id=query.message.chat_id,
+
+        title="Пакет песен",
+
+        description=package,
+
+        payload=package,
+
+        provider_token="",
+
+        currency="XTR",
+
+        prices=prices
+
+    )
+
+
+# ПОДТВЕРЖДЕНИЕ ОПЛАТЫ
+
+async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user = update.message.from_user.id
+
+    package = update.message.successful_payment.invoice_payload
+
+    credits = PACKAGES[package]["credits"]
+
+    add_credits(user,credits)
+
+    await update.message.reply_text(
+        f"Оплата прошла успешно!\nНачислено {credits} песен."
+    )
+
+
+app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+app.add_handler(CommandHandler("start",start))
+app.add_handler(MessageHandler(filters.TEXT,message))
+app.add_handler(CallbackQueryHandler(buy))
+app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT,successful_payment))
+
+app.run_polling()
