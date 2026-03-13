@@ -12,7 +12,7 @@ user_data = {}
 free_generation_used = set()
 
 # Настройки
-TOKEN = os.getenv("8069144735:AAEm_36bw0UctO7d88L_3XWjKIgiIGg_kLY")  # Токен бота Telegram
+TOKEN = os.getenv("TELEGRAM_TOKEN")  # Токен бота Telegram
 ROBOX_LOGIN = os.getenv("ROBOX_LOGIN")  # Robokassa login
 ROBOX_PASS1 = os.getenv("ROBOX_PASS1")  # Robokassa пароль1
 ROBOX_PASS2 = os.getenv("ROBOX_PASS2")  # Robokassa пароль2
