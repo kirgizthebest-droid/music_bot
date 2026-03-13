@@ -1,47 +1,31 @@
 import logging
-import os
-import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-# Логи
+# ===== Логи =====
 logging.basicConfig(level=logging.INFO)
 
-# Данные пользователей
+# ===== Данные пользователей =====
 user_data = {}
 free_generation_used = set()
 
-# Настройки
-TOKEN = os.getenv("TELEGRAM_TOKEN")  # Токен бота Telegram
-ROBOX_LOGIN = os.getenv("ROBOX_LOGIN")  # Robokassa login
-ROBOX_PASS1 = os.getenv("ROBOX_PASS1")  # Robokassa пароль1
-ROBOX_PASS2 = os.getenv("ROBOX_PASS2")  # Robokassa пароль2
-CURRENCY = "RUB"
+# ===== Токен Telegram =====
+TOKEN = "ВАШ_ТЕЛЕГРАМ_ТОКЕН"  # <-- вставьте сюда токен вашего бота
 
-# ---------------------
-# Функции генерации трека
-# ---------------------
+# ===== Функции =====
 def generate_prompt(data: dict):
     return (
-        f"Создай песню для {data['recipient_name']} на тему {data['occasion']}, "
-        f"стиль: {data['style']}, настроение: {data['mood']}. "
-        f"Описание: {data['description']}"
+        f"Создай песню для {data.get('recipient_name','')} на тему {data.get('occasion','')}, "
+        f"стиль: {data.get('style','')}, настроение: {data.get('mood','')}. "
+        f"Описание: {data.get('description','')}"
     )
 
 def generate_song(prompt: str):
-    """
-    Тут должен быть ваш вызов Suno API.
-    Для примера возвращаем ссылку-заглушку.
-    """
-    # Пример вызова:
-    # response = requests.post("SUNO_API_URL", json={"prompt": prompt})
-    # track_url = response.json()["track_url"]
-    track_url = "https://example.com/song.mp3"
-    return track_url
+    """Пример генерации трека (заглушка)"""
+    # Здесь будет вызов Suno API
+    return "https://example.com/song.mp3"
 
-# ---------------------
-# Старт
-# ---------------------
+# ===== Команды =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_data[chat_id] = {}
@@ -53,17 +37,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# ---------------------
-# Кнопки
-# ---------------------
+# ===== Кнопки =====
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     chat_id = query.message.chat.id
     data = query.data
 
+    # Начало создания песни
     if data == "create_song":
-        # Вопрос 1: Для кого песня
         keyboard = [
             [InlineKeyboardButton("❤️ Для любимого человека", callback_data="lover")],
             [InlineKeyboardButton("🎂 Для друга", callback_data="friend")],
@@ -74,7 +56,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Для кого будет песня?", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    # Обработка выбора
+    # Обработка выбора типа получателя
     if data in ["lover", "friend", "wedding", "company", "other_recipient"]:
         user_data[chat_id]['recipient_type'] = data
         if data == "wedding":
@@ -87,17 +69,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text("Введите свой вариант для кого песня")
         return
 
-    # Вопрос 4: Повод
-    if data in ["birthday", "wedding_occasion", "love", "funny", "thanks", "event", "other_occasion"]:
-        occasion_map = {
-            "birthday": "День рождения",
-            "wedding_occasion": "Свадьба",
-            "love": "Признание в любви",
-            "funny": "Шуточная песня",
-            "thanks": "Благодарность",
-            "event": "Праздник / событие",
-            "other_occasion": "Другое"
-        }
+    # Выбор повода
+    occasion_map = {
+        "birthday": "День рождения",
+        "wedding_occasion": "Свадьба",
+        "love": "Признание в любви",
+        "funny": "Шуточная песня",
+        "thanks": "Благодарность",
+        "event": "Праздник / событие",
+        "other_occasion": "Другое"
+    }
+    if data in occasion_map:
         user_data[chat_id]['occasion'] = occasion_map[data]
         await query.message.reply_text(
             "Расскажи немного о человеке / паре / компании.\nМожно написать:\n"
@@ -106,15 +88,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Выбор стиля
-    if data in ["pop","rap","rock","ballad","fun","hit"]:
-        style_map = {
-            "pop": "Поп",
-            "rap": "Рэп",
-            "rock": "Рок",
-            "ballad": "Душевная баллада",
-            "fun": "Весёлая песня",
-            "hit": "Современный хит"
-        }
+    style_map = {
+        "pop": "Поп",
+        "rap": "Рэп",
+        "rock": "Рок",
+        "ballad": "Душевная баллада",
+        "fun": "Весёлая песня",
+        "hit": "Современный хит"
+    }
+    if data in style_map:
         user_data[chat_id]['style'] = style_map[data]
         keyboard = [
             [InlineKeyboardButton("❤️ Романтичная", callback_data="romantic")],
@@ -127,17 +109,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Выбор настроения
-    if data in ["romantic","touching","funny_mood","energetic","other_mood"]:
-        mood_map = {
-            "romantic": "Романтичная",
-            "touching": "Трогательная",
-            "funny_mood": "Смешная",
-            "energetic": "Энергичная",
-            "other_mood": "Другое"
-        }
+    mood_map = {
+        "romantic": "Романтичная",
+        "touching": "Трогательная",
+        "funny_mood": "Смешная",
+        "energetic": "Энергичная",
+        "other_mood": "Другое"
+    }
+    if data in mood_map:
         user_data[chat_id]['mood'] = mood_map[data]
-
-        # Проверка бесплатной генерации
+        # Бесплатная генерация
         if chat_id not in free_generation_used:
             free_generation_used.add(chat_id)
             await query.message.reply_text("🎁 Ваша бесплатная песня создается...")
@@ -145,35 +126,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             track_url = generate_song(prompt)
             await query.message.reply_text(f"Ваша песня готова! 🎵\n{track_url}")
         else:
-            # Предложение покупки
-            keyboard = [
-                [InlineKeyboardButton("1 песня - 350 ₽", callback_data="buy_1")],
-                [InlineKeyboardButton("3 песни - 1000 ₽", callback_data="buy_3")],
-                [InlineKeyboardButton("10 песен - 2500 ₽", callback_data="buy_10")],
-                [InlineKeyboardButton("50 песен - 4000 ₽", callback_data="buy_50")]
-            ]
-            await query.message.reply_text("Вы использовали бесплатную генерацию. Выберите пакет:", reply_markup=InlineKeyboardMarkup(keyboard))
+            await query.message.reply_text("Вы использовали бесплатную генерацию. Платные функции пока отключены в этой тестовой версии.")
         return
 
-    # Обработка покупки
-    if data.startswith("buy_"):
-        price_map = {
-            "buy_1": 350,
-            "buy_3": 1000,
-            "buy_10": 2500,
-            "buy_50": 4000
-        }
-        amount = price_map[data]
-        # Формирование ссылки Robokassa
-        # Простейший вариант: ссылка на оплату
-        order_id = f"{chat_id}_{data}"
-        payment_url = f"https://auth.robokassa.ru/Merchant/Index.aspx?MerchantLogin={ROBOX_LOGIN}&OutSum={amount}&InvoiceID={order_id}&Description=Покупка песен&Culture=ru"
-        await query.message.reply_text(f"Оплатите через Robokassa:\n{payment_url}")
-        return
-
-# ---------------------
-# Обработка текстовых сообщений
-# ---------------------
+# ===== Текстовые сообщения =====
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     text = update.message.text
@@ -200,9 +156,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Выберите стиль песни", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-# ---------------------
-# Запуск
-# ---------------------
+# ===== Запуск =====
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
