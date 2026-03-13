@@ -149,33 +149,28 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ПОКУПКА
-
-async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def buy(update, context):
 
     query = update.callback_query
-
     package = query.data
 
-    prices = create_invoice(package)
+    keyboard = [
 
-    await context.bot.send_invoice(
+        [InlineKeyboardButton("💎 Telegram Stars",
+        callback_data=f"stars_{package}")],
 
-        chat_id=query.message.chat_id,
+        [InlineKeyboardButton("💳 Карта",
+        callback_data=f"card_{package}")],
 
-        title="Пакет песен",
+        [InlineKeyboardButton("₮ USDT",
+        callback_data=f"crypto_{package}")]
 
-        description=package,
+    ]
 
-        payload=package,
-
-        provider_token="",
-
-        currency="XTR",
-
-        prices=prices
-
+    await query.message.reply_text(
+        "Выберите способ оплаты:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
 
 # ПОДТВЕРЖДЕНИЕ ОПЛАТЫ
 
