@@ -6,9 +6,9 @@ from datetime import datetime
 app = Flask(__name__)
 
 # ===== Настройки =====
-TELEGRAM_TOKEN = os.environ.get("8069144735:AAEm_36bw0UctO7d88L_3XWjKIgiIGg_kLY")  # токен Telegram-бота
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")  # токен Telegram-бота
 SUNO_API_URL = "https://api.sunoapi.org/api/v1/generate"  # endpoint Suno API
-SUNO_API_KEY = os.environ.get("f96d8f07d628dd81a0333877fd7881f0")  # ключ Suno API
+SUNO_API_KEY = os.environ.get("SUNO_API_KEY")  # ключ Suno API
 FREE_LIMIT = 1  # 1 бесплатная генерация в день
 
 # ===== Словарь для учёта бесплатных генераций =====
