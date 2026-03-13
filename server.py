@@ -9,7 +9,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 SUNO_API_KEY = os.getenv("SUNO_API_KEY")
 
-BOT_USERNAME = "ВАШ_БОТ_USERNAME"
+BOT_USERNAME = "Pesnya_iz_text_bot"
 
 SUNO_URL = "https://api.sunoapi.org/api/v1/generate"
 
