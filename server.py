@@ -9,7 +9,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 SUNO_API_KEY = os.getenv("SUNO_API_KEY")
 
-BOT_USERNAME = "Pesnya_iz_text_bot"
+BOT_USERNAME = "YOUR_BOT_USERNAME"
 
 SUNO_URL = "https://api.sunoapi.org/api/v1/generate"
 
@@ -46,7 +46,6 @@ def create_user(user_id, ref=None):
         conn.commit()
 
         if ref and ref != user_id:
-
             add_credits(ref,1)
 
 
@@ -58,6 +57,17 @@ def get_user(user):
     )
 
     row = cursor.fetchone()
+
+    if row is None:
+
+        cursor.execute(
+        "INSERT INTO users(id) VALUES(?)",
+        (user,)
+        )
+
+        conn.commit()
+
+        return (0,0)
 
     return row
 
@@ -92,7 +102,7 @@ def use_free(user):
     conn.commit()
 
 
-# ===== ПРОМТ =====
+# ===== PROMPT =====
 
 def build_prompt(data):
 
