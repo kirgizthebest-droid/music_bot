@@ -1,54 +1,45 @@
 import os
 import requests
 
-from telegram import (
-Update,
-ReplyKeyboardMarkup,
-InlineKeyboardButton,
-InlineKeyboardMarkup
-)
+from telegram import Update,ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters,ContextTypes
 
-from telegram.ext import (
-ApplicationBuilder,
-CommandHandler,
-MessageHandler,
-CallbackQueryHandler,
-filters,
-ContextTypes
-)
-
-from prompts import build_prompt
 from database import *
+from prompts import *
 from payments import *
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-SUNO_API_KEY = os.getenv("SUNO_API_KEY")
+TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-SUNO_URL = "https://api.sunoapi.org/api/v1/generate"
+SUNO_API = os.getenv("SUNO_API_KEY")
 
 user_data = {}
 
 
-# START
+async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user.id
+
+    ref = None
+
+    if context.args:
+        ref = int(context.args[0])
+
+    create_user(user,ref)
 
     keyboard = [
-        ["❤️ Для любимого человека"],
-        ["👬 Для друга"],
-        ["💍 Свадьба"],
-        ["🏢 Для компании"]
+    ["❤️ Любимому"],
+    ["👬 Другу"],
+    ["💍 Свадьба"],
+    ["🏢 Компания"]
     ]
 
     await update.message.reply_text(
-        "🎵 Я создаю персональные песни!\n\nДля кого песня?",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    "Я создаю персональные песни\n\nДля кого песня?",
+    reply_markup=ReplyKeyboardMarkup(keyboard,resize_keyboard=True)
     )
 
 
-# ОБРАБОТКА СООБЩЕНИЙ
-
-async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def message(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     user = update.message.from_user.id
     text = update.message.text
@@ -58,41 +49,59 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = user_data[user]
 
-    if "target_type" not in data:
-        data["target_type"] = text
+    if "target" not in data:
+
+        data["target"] = text
+
         await update.message.reply_text("Как зовут человека?")
+
         return
 
     if "name" not in data:
+
         data["name"] = text
+
         await update.message.reply_text("От кого песня?")
+
         return
 
     if "from" not in data:
+
         data["from"] = text
-        await update.message.reply_text("Повод?")
+
+        await update.message.reply_text("Какой повод?")
+
         return
 
     if "occasion" not in data:
+
         data["occasion"] = text
+
         await update.message.reply_text("Опишите человека")
+
         return
 
     if "description" not in data:
+
         data["description"] = text
-        await update.message.reply_text("Стиль песни? (Поп / Рэп / Рок)")
+
+        await update.message.reply_text("Стиль песни")
+
         return
 
     if "style" not in data:
+
         data["style"] = text
-        await update.message.reply_text("Настроение песни?")
+
+        await update.message.reply_text("Настроение")
+
         return
 
     if "mood" not in data:
 
         data["mood"] = text
 
-        free_used, credits = get_user(user)
+        free_used,credits = get_user(user)
 
         if free_used == 0:
 
@@ -104,38 +113,25 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         else:
 
-            keyboard = [
-                [
-                    InlineKeyboardButton("3 песни",callback_data="pack_3")
-                ],
-                [
-                    InlineKeyboardButton("10 песен",callback_data="pack_10")
-                ],
-                [
-                    InlineKeyboardButton("50 песен",callback_data="pack_50")
-                ]
-            ]
-
             await update.message.reply_text(
-                "Бесплатная песня закончилась.\nКупите пакет:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+            "Бесплатная песня закончилась. Купите пакет."
             )
 
             return
 
         prompt = build_prompt(data)
 
-        await update.message.reply_text("🎵 Генерирую песню...")
+        await update.message.reply_text("Генерирую песню...")
 
         r = requests.post(
-            SUNO_URL,
-            headers={"Authorization":f"Bearer {SUNO_API_KEY}"},
-            json={"prompt":prompt}
+        "https://api.sunoapi.org/api/v1/generate",
+        headers={"Authorization":f"Bearer {SUNO_API}"},
+        json={"prompt":prompt}
         )
 
-        audio_url = r.json()["audio_url"]
+        audio = r.json()["audio_url"]
 
-        song = requests.get(audio_url)
+        song = requests.get(audio)
 
         file = f"{user}.mp3"
 
@@ -145,113 +141,3 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_audio(open(file,"rb"))
 
         user_data[user] = {}
-
-
-
-# ПОКУПКА
-async def buy(update, context):
-
-    query = update.callback_query
-    package = query.data
-
-    keyboard = [
-
-        [InlineKeyboardButton("💎 Telegram Stars",
-        callback_data=f"stars_{package}")],
-
-        [InlineKeyboardButton("💳 Карта",
-        callback_data=f"card_{package}")],
-
-        [InlineKeyboardButton("₮ USDT",
-        callback_data=f"crypto_{package}")]
-
-    ]
-
-    await query.message.reply_text(
-        "Выберите способ оплаты:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-# ПОДТВЕРЖДЕНИЕ ОПЛАТЫ
-
-async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    user = update.message.from_user.id
-
-    package = update.message.successful_payment.invoice_payload
-
-    credits = PACKAGES[package]["credits"]
-
-    add_credits(user,credits)
-
-    await update.message.reply_text(
-        f"Оплата прошла успешно!\nНачислено {credits} песен."
-    )
-
-
-app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
-app.add_handler(CommandHandler("start",start))
-app.add_handler(MessageHandler(filters.TEXT,message))
-app.add_handler(CallbackQueryHandler(buy))
-app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT,successful_payment))
-
-app.run_polling()
-if query.data.startswith("stars_"):
-
-    package = query.data.replace("stars_","")
-
-    prices = create_invoice(package)
-
-    await context.bot.send_invoice(
-
-        chat_id=query.message.chat_id,
-
-        title="Пакет песен",
-
-        description=package,
-
-        payload=package,
-
-        provider_token="",
-
-        currency="XTR",
-
-        prices=prices
-
-
-    if query.data.startswith("card_"):
-
-    package = query.data.replace("card_","")
-
-    price = PACKAGES[package]["price_rub"]
-
-    payment_url = f"https://yoomoney.ru/quickpay/confirm.xml?receiver=4100119491011245={price}"
-
-    await query.message.reply_text(
-
-        f"Оплатите по ссылке:\n{payment_url}\n\nПосле оплаты нажмите /paid"
-
-    
-    if query.data.startswith("crypto_"):
-
-    package = query.data.replace("crypto_","")
-
-    price = PACKAGES[package]["price_usdt"]
-
-    wallet = "ВАШ_USDT_КОШЕЛЕК"
-
-    await query.message.reply_text(
-
-f"""
-Оплатите {price} USDT
-
-Сеть: TRC20
-
-Кошелек:
-
-{wallet}
-
-После оплаты отправьте TXID
-"""
-)
